@@ -3,5 +3,11 @@
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "socket.io": "^4.8.1"
+  },
+  "scripts": {
+    "start": "tsx server.js"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
   }
 }
