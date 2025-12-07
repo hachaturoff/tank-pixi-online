@@ -44,7 +44,7 @@ const isWall = (x, y) => {
 }
 
 // Проверка коллизии игрока со стенами (учитывая размер танка)
-const checkPlayerCollision = (x, y, halfSize = 12) => {
+const checkPlayerCollision = (x, y, halfSize = 24) => {
     // Проверяем все 4 угла танка
     return isWall(x - halfSize, y - halfSize) ||
            isWall(x + halfSize, y - halfSize) ||
@@ -331,6 +331,13 @@ const updateBullets = () => {
             bullet.destroy();
             bullets.splice(i, 1);
             continue; // Bullet removed, skip collision check
+        }
+
+        // Проверка коллизии пули со стеной
+        if (isWall(bullet.x, bullet.y)) {
+            bullet.destroy();
+            bullets.splice(i, 1);
+            continue; // Bullet hit wall, skip player collision check
         }
 
         if (bullet.ownerId !== socket.id) continue; 
