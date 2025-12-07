@@ -70,6 +70,8 @@ socket.on("shoot", (data) => {
     bullet.rotation = bulletData.rotation;
     bullet.speed = bulletData.speed;
 
+    bullet.ownerId = data.playerId;
+
     app.stage.addChild(bullet);
     bullets.push(bullet);
 });
@@ -211,6 +213,8 @@ const createBullet = () => {
     bullet.rotation = angle - Math.PI * 1.5;   
 
     bullet.speed = 8;
+    bullet.ownerId = socket.id;
+
     app.stage.addChild(bullet);
 
     return bullet;
@@ -225,6 +229,7 @@ const shoot = () => {
     socket.emit("shoot", {
         playerId: socket.id,
         bullet: {
+            id: bullet.ownerId,
             x: bullet.x,
             y: bullet.y,
             rotation: bullet.rotation,
@@ -249,19 +254,11 @@ const updateBullets = () => {
             continue; // Bullet removed, skip collision check
         }
 
-        // Check collision with other players
-        // We only check collisions for bullets we shot locally to avoid double counting
-        // But for simplicity if bullets are shared, we might need a flag. 
-        // Assuming 'bullets' array contains all bullets, but we only have collision logic for our own bullets vs others?
-        // Wait, the bullets array now contains ALL bullets from 'shoot' event too.
-        // But the requirement says "when player shoots and hits another player".
-        // The shooter should detect the hit.
-        // We need to differentiate local bullets vs remote bullets maybe?
-        // The prompt implies we just need to detect hit. 
-        
-        // Let's iterate over otherPlayers
+        if (bullet.ownerId !== socket.id) continue; 
+
         for (const playerId in otherPlayers) {
             const enemy = otherPlayers[playerId];
+
             if (!enemy) continue;
 
             // Simple distance check or AABB
@@ -271,10 +268,10 @@ const updateBullets = () => {
             
             // 20 is approx radius of tank (since scale is 2 and maybe texture is small, actually tank texture size unknown but assuming ~40px width total)
             if (dist < 30) {
-                 socket.emit("playerHit", { id: playerId });
-                 bullet.destroy();
-                 bullets.splice(i, 1);
-                 break; // Bullet hit something, stop checking other enemies
+                    socket.emit("playerHit", { id: playerId });
+                    bullet.destroy();
+                    bullets.splice(i, 1);
+                    break; // Bullet hit something, stop checking other enemies
             }
         }
     }
