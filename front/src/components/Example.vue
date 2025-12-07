@@ -36,6 +36,21 @@ socket.on("init", (players) => {
         
 })
 
+socket.on("shoot", (data) => {
+    const bulletData = data.bullet;
+    const bullet = new Graphics();
+    // bullet.rect(-2, -2, 4, 4);
+    bullet.circle(0, 0, 2);
+    bullet.fill(0xff0000);
+
+    bullet.x = bulletData.x;
+    bullet.y = bulletData.y;
+    bullet.rotation = bulletData.rotation;
+    bullet.speed = bulletData.speed;
+
+    app.stage.addChild(bullet);
+    bullets.push(bullet);
+});
 
 socket.on("gameState", (players) => {
     // 1. Update or Create players
@@ -68,9 +83,9 @@ socket.on("gameState", (players) => {
         if (!players[existingPlayerId]) {
             // Player left
             if (otherPlayer[existingPlayerId]) {
-                 app.stage.removeChild(otherPlayer[existingPlayerId]);
-                 otherPlayer[existingPlayerId].destroy();
-                 delete otherPlayer[existingPlayerId];
+                app.stage.removeChild(otherPlayer[existingPlayerId]);
+                otherPlayer[existingPlayerId].destroy();
+                delete otherPlayer[existingPlayerId];
             }
         }
     }
@@ -179,6 +194,9 @@ const createBullet = () => {
 
     bullet.speed = 8;
     app.stage.addChild(bullet);
+
+    
+
     return bullet;
 }
 
@@ -187,6 +205,17 @@ const shoot = () => {
     if (now - lastShotTime < shotDelay) return;
 
     const bullet = createBullet();
+
+    socket.emit("shoot", {
+        playerId: socket.id,
+        bullet: {
+            x: bullet.x,
+            y: bullet.y,
+            rotation: bullet.rotation,
+            speed: bullet.speed,
+        }
+    });
+
     bullets.push(bullet);
     lastShotTime = now;
 }

@@ -30,18 +30,17 @@ app.get("/", (req, res) => {
 });
 
 setInterval(() => {
-    io.emit('gameState', players); 
+  io.emit("gameState", players);
 }, GAME_TICK_RATE);
 
 io.on("connection", (socket) => {
   console.log("a user connected " + socket.id);
-  
+
   const randomX = Math.floor(Math.random() * 7) * 50;
   const randomY = Math.floor(Math.random() * 7) * 50;
-  
+
   players[socket.id] = { id: socket.id, x: randomX, y: randomY, rotation: 0 };
 
-  
   socket.emit("init", players);
 
   socket.on("playerMovement", (data) => {
@@ -50,8 +49,16 @@ io.on("connection", (socket) => {
       x: data.x,
       y: data.y,
       rotation: data.rotation,
-    };    
-  })
+    };
+  });
+
+  socket.on("shoot", (data) => {
+    console.log("shoot", data);
+    socket.broadcast.emit("shoot", {
+      playerId: socket.id,
+      bullet: data.bullet,
+    });
+  });
 
   socket.on("disconnect", () => {
     delete players[socket.id];
