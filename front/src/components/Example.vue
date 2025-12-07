@@ -22,6 +22,11 @@ let lastShotTime = 0;
 const shotDelay = 400;
 let handleKeyDown, handleKeyUp;
 
+// Линейная интерполяция для плавного движения
+const lerp = (start, end, amt) => {
+  return (1 - amt) * start + amt * end;
+}
+
 socket.on("init", (players) => {
     console.log("Init players:", players);
         
@@ -91,15 +96,23 @@ socket.on("gameState", (players) => {
             newSprite.anchor.set(0.5);
             newSprite.scale.set(2);
             
+            // Инициализация целевых значений
+            newSprite.targetX = playerData.x;
+            newSprite.targetY = playerData.y;
+            newSprite.targetRotation = playerData.rotation;
+            newSprite.x = playerData.x;
+            newSprite.y = playerData.y;
+            newSprite.rotation = playerData.rotation;
+            
             app.stage.addChild(newSprite);
             otherPlayers[playerId] = newSprite;
         }
 
-        // Update position
+        // Обновление целевых координат (не прямых)
         const otherSprite = otherPlayers[playerId];
-        otherSprite.x = playerData.x;
-        otherSprite.y = playerData.y;
-        otherSprite.rotation = playerData.rotation;
+        otherSprite.targetX = playerData.x;
+        otherSprite.targetY = playerData.y;
+        otherSprite.targetRotation = playerData.rotation;
     }
 
     // 2. Remove disconnected players
@@ -191,6 +204,16 @@ onMounted(async () => {
                 y: player.y,
                 rotation: player.rotation
             });
+        }
+
+        // Плавная интерполяция других игроков
+        for (const playerId in otherPlayers) {
+            const other = otherPlayers[playerId];
+            if (other && other.targetX !== undefined) {
+                other.x = lerp(other.x, other.targetX, 0.15);
+                other.y = lerp(other.y, other.targetY, 0.15);
+                other.rotation = lerp(other.rotation, other.targetRotation, 0.15);
+            }
         }
 
         updateBullets();
