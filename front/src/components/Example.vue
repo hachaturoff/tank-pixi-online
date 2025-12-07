@@ -52,6 +52,24 @@ const checkPlayerCollision = (x, y, halfSize = 24) => {
            isWall(x + halfSize, y + halfSize);
 }
 
+// Проверка коллизии с другими игроками
+const checkOtherPlayersCollision = (x, y, collisionRadius = 50) => {
+    for (const playerId in otherPlayers) {
+        const other = otherPlayers[playerId];
+        if (!other) continue;
+        
+        const dx = x - other.x;
+        const dy = y - other.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Если расстояние между центрами меньше суммы радиусов — есть коллизия
+        if (distance < collisionRadius) {
+            return true;
+        }
+    }
+    return false;
+}
+
 socket.on("init", (players) => {
     console.log("Init players:", players);
         
@@ -239,9 +257,9 @@ onMounted(async () => {
             moved = true;
         }
 
-        // Проверка коллизии со стенами
-        if (checkPlayerCollision(player.x, player.y)) {
-            // Откатываем позицию если врезались в стену
+        // Проверка коллизии со стенами и другими игроками
+        if (checkPlayerCollision(player.x, player.y) || checkOtherPlayersCollision(player.x, player.y)) {
+            // Откатываем позицию если врезались в стену или другого игрока
             player.x = prevX;
             player.y = prevY;
             moved = false;
