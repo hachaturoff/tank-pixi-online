@@ -6,10 +6,11 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { Application, Sprite, Texture, RenderTexture, Graphics } from 'pixi.js';
 import { tankGraphics } from "@/utilites/tank.js"
+import { wallGraphics } from "@/utilites/wall.js"
+import { MAP_GRID } from "@/utilites/map.js"
 
 import { io } from "socket.io-client";
 const socket = io("http://localhost:3000");
-
 
 const gameContainer = ref(null);
 const keys = {};
@@ -21,6 +22,8 @@ let bullets = [];
 let lastShotTime = 0;
 const shotDelay = 400;
 let handleKeyDown, handleKeyUp;
+
+const TILE_SIZE = 25;
 
 // Линейная интерполяция для плавного движения
 const lerp = (start, end, amt) => {
@@ -90,7 +93,7 @@ socket.on("gameState", (players) => {
 
         if (!otherPlayers[playerId]) {
             // New player joined
-            const tankTexture = tankGraphics(app.renderer);
+            const tankTexture = tankGraphics(app.renderer, playerData.color);
             const newSprite = new Sprite(tankTexture);
             
             newSprite.anchor.set(0.5);
@@ -146,13 +149,31 @@ onMounted(async () => {
     field.stroke({ width: 4, color: 0xffffff });
     app.stage.addChild(field);
 
+    const wallTexture = wallGraphics(app.renderer);
+
+    for (let row = 0; row < MAP_GRID.length; row++) {
+        for (let col = 0; col < MAP_GRID[row].length; col++) {
+            
+            // Если значение в массиве равно 1, создаем стену
+            if (MAP_GRID[row][col] === 1) {
+                // Создаем новый спрайт, используя общую текстуру
+                const wallSprite = new Sprite(wallTexture);
+
+                // Устанавливаем позицию, используя координаты сетки и размер тайла
+                wallSprite.x = col * TILE_SIZE;
+                wallSprite.y = row * TILE_SIZE;
+
+                // Добавляем стену на сцену
+                app.stage.addChild(wallSprite);
+            }
+        }
+    }
+
     const tankTexture = tankGraphics(app.renderer);
     player = new Sprite(tankTexture);
     player.anchor.set(0.5);
     player.scale.set(2);
     app.stage.addChild(player);
-
-    
 
     handleKeyDown = (e) => {
         keys[e.code] = true;
@@ -235,7 +256,7 @@ const createBullet = () => {
 
     bullet.rotation = angle - Math.PI * 1.5;   
 
-    bullet.speed = 8;
+    bullet.speed = 6;
     bullet.ownerId = socket.id;
 
     app.stage.addChild(bullet);

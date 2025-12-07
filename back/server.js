@@ -39,7 +39,13 @@ io.on("connection", (socket) => {
   const randomX = Math.floor(Math.random() * 7) * 50;
   const randomY = Math.floor(Math.random() * 7) * 50;
 
-  players[socket.id] = { id: socket.id, x: randomX, y: randomY, rotation: 0 };
+
+  players[socket.id] = {
+    id: socket.id,
+    x: randomX,
+    y: randomY,
+    rotation: 0,
+  };
 
   socket.emit("init", players);
 
