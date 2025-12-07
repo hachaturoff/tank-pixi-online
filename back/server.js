@@ -59,6 +59,15 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("playerHit", (data) => {
+    // data.id is the victim's socket id
+    const victimId = data.id;
+    if (players[victimId]) {
+      delete players[victimId];
+      io.emit("deathPlayer", { id: victimId });
+    }
+  });
+
   socket.on("disconnect", () => {
     delete players[socket.id];
   });

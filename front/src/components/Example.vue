@@ -15,7 +15,7 @@ const gameContainer = ref(null);
 const keys = {};
 let app = null;
 let player = null;
-let otherPlayer = {};
+let otherPlayers = {};
 let speed = 2;
 let bullets = [];
 let lastShotTime = 0;
@@ -35,6 +35,28 @@ socket.on("init", (players) => {
     }
         
 })
+
+socket.on("deathPlayer", (data) => {
+    const victimId = data.id;
+    if (victimId === socket.id) {
+        // I died
+        alert("You died! Game Over.");
+        // Optional: reload or cleanup
+        if (player) {
+            app.stage.removeChild(player);
+            player.destroy();
+            player = null;
+        }
+        location.reload(); 
+    } else {
+        // Someone else died
+        if (otherPlayers[victimId]) {
+            app.stage.removeChild(otherPlayers[victimId]);
+            otherPlayers[victimId].destroy();
+            delete otherPlayers[victimId];
+        }
+    }
+});
 
 socket.on("shoot", (data) => {
     const bulletData = data.bullet;
@@ -59,7 +81,7 @@ socket.on("gameState", (players) => {
 
         const playerData = players[playerId];
 
-        if (!otherPlayer[playerId]) {
+        if (!otherPlayers[playerId]) {
             // New player joined
             const tankTexture = tankGraphics(app.renderer);
             const newSprite = new Sprite(tankTexture);
@@ -68,24 +90,24 @@ socket.on("gameState", (players) => {
             newSprite.scale.set(2);
             
             app.stage.addChild(newSprite);
-            otherPlayer[playerId] = newSprite;
+            otherPlayers[playerId] = newSprite;
         }
 
         // Update position
-        const otherSprite = otherPlayer[playerId];
+        const otherSprite = otherPlayers[playerId];
         otherSprite.x = playerData.x;
         otherSprite.y = playerData.y;
         otherSprite.rotation = playerData.rotation;
     }
 
     // 2. Remove disconnected players
-    for (const existingPlayerId in otherPlayer) {
+    for (const existingPlayerId in otherPlayers) {
         if (!players[existingPlayerId]) {
             // Player left
-            if (otherPlayer[existingPlayerId]) {
-                app.stage.removeChild(otherPlayer[existingPlayerId]);
-                otherPlayer[existingPlayerId].destroy();
-                delete otherPlayer[existingPlayerId];
+            if (otherPlayers[existingPlayerId]) {
+                app.stage.removeChild(otherPlayers[existingPlayerId]);
+                otherPlayers[existingPlayerId].destroy();
+                delete otherPlayers[existingPlayerId];
             }
         }
     }
@@ -224,6 +246,36 @@ const updateBullets = () => {
         if (bullet.x < -10 || bullet.x > 610 || bullet.y < -10 || bullet.y > 610) {
             bullet.destroy();
             bullets.splice(i, 1);
+            continue; // Bullet removed, skip collision check
+        }
+
+        // Check collision with other players
+        // We only check collisions for bullets we shot locally to avoid double counting
+        // But for simplicity if bullets are shared, we might need a flag. 
+        // Assuming 'bullets' array contains all bullets, but we only have collision logic for our own bullets vs others?
+        // Wait, the bullets array now contains ALL bullets from 'shoot' event too.
+        // But the requirement says "when player shoots and hits another player".
+        // The shooter should detect the hit.
+        // We need to differentiate local bullets vs remote bullets maybe?
+        // The prompt implies we just need to detect hit. 
+        
+        // Let's iterate over otherPlayers
+        for (const playerId in otherPlayers) {
+            const enemy = otherPlayers[playerId];
+            if (!enemy) continue;
+
+            // Simple distance check or AABB
+            const dx = bullet.x - enemy.x;
+            const dy = bullet.y - enemy.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            // 20 is approx radius of tank (since scale is 2 and maybe texture is small, actually tank texture size unknown but assuming ~40px width total)
+            if (dist < 30) {
+                 socket.emit("playerHit", { id: playerId });
+                 bullet.destroy();
+                 bullets.splice(i, 1);
+                 break; // Bullet hit something, stop checking other enemies
+            }
         }
     }
 }
