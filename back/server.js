@@ -53,7 +53,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("shoot", (data) => {
-    console.log("shoot", data);
     socket.broadcast.emit("shoot", {
       playerId: socket.id,
       bullet: data.bullet,

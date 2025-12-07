@@ -141,18 +141,15 @@ onMounted(async () => {
             player.y -= speed;
             rotationAngle = Math.PI;
             moved = true;
-        }
-        if (keys["ArrowDown"]) {
+        } else if (keys["ArrowDown"]) {
             player.y += speed;
             rotationAngle = 0;
             moved = true;
-        }
-        if (keys["ArrowLeft"]) {
+        } else if (keys["ArrowLeft"]) {
             player.x -= speed;
             rotationAngle = Math.PI / 2;
             moved = true;
-        }
-        if (keys["ArrowRight"]) {
+        } else if (keys["ArrowRight"]) {
             player.x += speed;
             rotationAngle = Math.PI * 1.5;
             moved = true;
@@ -178,7 +175,6 @@ onMounted(async () => {
 
 const createBullet = () => {
     const bullet = new Graphics();
-    // bullet.rect(-2, -2, 4, 4);
     bullet.circle(0, 0, 2);
     bullet.fill(0xffff00);
 
@@ -194,8 +190,6 @@ const createBullet = () => {
 
     bullet.speed = 8;
     app.stage.addChild(bullet);
-
-    
 
     return bullet;
 }
