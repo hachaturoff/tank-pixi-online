@@ -30,6 +30,28 @@ const lerp = (start, end, amt) => {
   return (1 - amt) * start + amt * end;
 }
 
+// Проверка, является ли клетка стеной
+const isWall = (x, y) => {
+    const col = Math.floor(x / TILE_SIZE);
+    const row = Math.floor(y / TILE_SIZE);
+    
+    // Проверка границ массива
+    if (row < 0 || row >= MAP_GRID.length || col < 0 || col >= MAP_GRID[0].length) {
+        return true; // За границами = стена
+    }
+    
+    return MAP_GRID[row][col] === 1;
+}
+
+// Проверка коллизии игрока со стенами (учитывая размер танка)
+const checkPlayerCollision = (x, y, halfSize = 12) => {
+    // Проверяем все 4 угла танка
+    return isWall(x - halfSize, y - halfSize) ||
+           isWall(x + halfSize, y - halfSize) ||
+           isWall(x - halfSize, y + halfSize) ||
+           isWall(x + halfSize, y + halfSize);
+}
+
 socket.on("init", (players) => {
     console.log("Init players:", players);
         
@@ -194,6 +216,10 @@ onMounted(async () => {
     app.ticker.add(() => {
         let moved = false;
         let rotationAngle = 0;
+        
+        // Сохраняем предыдущую позицию
+        const prevX = player.x;
+        const prevY = player.y;
 
         if (keys["ArrowUp"]) {
             player.y -= speed;
@@ -213,13 +239,22 @@ onMounted(async () => {
             moved = true;
         }
 
+        // Проверка коллизии со стенами
+        if (checkPlayerCollision(player.x, player.y)) {
+            // Откатываем позицию если врезались в стену
+            player.x = prevX;
+            player.y = prevY;
+            moved = false;
+        }
+
         // Keep player within bounds (accounting for player size)
         player.x = Math.max(15, Math.min(585, player.x));
         player.y = Math.max(15, Math.min(585, player.y));
 
         if (moved) {
             player.rotation = rotationAngle;
-
+            console.log("wallTexture", wallTexture);
+            
             socket.emit("playerMovement", {
                 x: player.x,
                 y: player.y,
