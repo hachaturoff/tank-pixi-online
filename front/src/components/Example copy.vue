@@ -9,9 +9,6 @@ import { tankGraphics } from "@/utilites/tank.js"
 import { wallGraphics } from "@/utilites/wall.js"
 import { MAP_GRID } from "@/utilites/map.js"
 
-import { io } from "socket.io-client";
-const socket = io("http://localhost:3000");
-
 const props = defineProps({
     socket: {
         type: Object,
@@ -23,6 +20,9 @@ const props = defineProps({
     }
 
 });
+
+console.log("props", props);
+
 
 const gameContainer = ref(null);
 const keys = {};
@@ -82,11 +82,11 @@ const checkOtherPlayersCollision = (x, y, collisionRadius = 50) => {
     return false;
 }
 
-socket.on("init", (players) => {
+props.socket.on("init", (players) => {
     console.log("Init players:", players);
         
     if(player) {
-        const playerData = players[socket.id];
+        const playerData = players[props.socket.id];
 
         player.x = playerData.x;
         player.y = playerData.y;
@@ -96,9 +96,9 @@ socket.on("init", (players) => {
         
 })
 
-socket.on("deathPlayer", (data) => {
+props.socket.on("deathPlayer", (data) => {
     const victimId = data.id;
-    if (victimId === socket.id) {
+    if (victimId === props.socket.id) {
         // I died
         alert("You died! Game Over.");
         // Optional: reload or cleanup
@@ -118,7 +118,7 @@ socket.on("deathPlayer", (data) => {
     }
 });
 
-socket.on("shoot", (data) => {
+props.socket.on("shoot", (data) => {
     const bulletData = data.bullet;
     const bullet = new Graphics();
     // bullet.rect(-2, -2, 4, 4);
@@ -136,10 +136,10 @@ socket.on("shoot", (data) => {
     bullets.push(bullet);
 });
 
-socket.on("gameState", (players) => {
+props.socket.on("gameState", (players) => {
     // 1. Update or Create players
     for(const playerId in players) {
-        if(playerId === socket.id) continue;
+        if(playerId === props.socket.id) continue;
 
         const playerData = players[playerId];
 
@@ -184,10 +184,6 @@ socket.on("gameState", (players) => {
 });
 
 onMounted(async () => {
-
-    if (!props.matchId || !gameContainer.value) return;
-
-    console.log("props", props);
 
     app = new Application();
     await app.init({
@@ -289,7 +285,7 @@ onMounted(async () => {
             player.rotation = rotationAngle;
             console.log("wallTexture", wallTexture);
             
-            socket.emit("playerMovement", {
+            props.socket.emit("playerMovement", {
                 x: player.x,
                 y: player.y,
                 rotation: player.rotation
@@ -308,8 +304,6 @@ onMounted(async () => {
 
         updateBullets();
     });
-
-    
 });
 
 const createBullet = () => {
@@ -328,7 +322,7 @@ const createBullet = () => {
     bullet.rotation = angle - Math.PI * 1.5;   
 
     bullet.speed = 6;
-    bullet.ownerId = socket.id;
+    bullet.ownerId = props.socket.id;
 
     app.stage.addChild(bullet);
 
@@ -341,8 +335,8 @@ const shoot = () => {
 
     const bullet = createBullet();
 
-    socket.emit("shoot", {
-        playerId: socket.id,
+    props.socket.emit("shoot", {
+        playerId: props.socket.id,
         bullet: {
             id: bullet.ownerId,
             x: bullet.x,
@@ -376,7 +370,7 @@ const updateBullets = () => {
             continue; // Bullet hit wall, skip player collision check
         }
 
-        if (bullet.ownerId !== socket.id) continue; 
+        if (bullet.ownerId !== props.socket.id) continue; 
 
         for (const playerId in otherPlayers) {
             const enemy = otherPlayers[playerId];
@@ -390,7 +384,7 @@ const updateBullets = () => {
             
             // 20 is approx radius of tank (since scale is 2 and maybe texture is small, actually tank texture size unknown but assuming ~40px width total)
             if (dist < 30) {
-                    socket.emit("playerHit", { id: playerId });
+                    props.socket.emit("playerHit", { id: playerId });
                     bullet.destroy();
                     bullets.splice(i, 1);
                     break; // Bullet hit something, stop checking other enemies
@@ -398,70 +392,6 @@ const updateBullets = () => {
         }
     }
 }
-
-
-watch(() => props.socket, (newSocket, oldSocket) => {
-    if (newSocket && newSocket !== oldSocket) {
-        setupSocketListeners(newSocket);
-    }
-}, { immediate: true });
-
-
-const setupSocketListeners = (socketInstance) => {
-    // 1. Обработка начального состояния (Init)
-    socketInstance.on('init', (initialPlayers) => {
-        console.log("Game Init received:", initialPlayers);
-        
-        // Очистка предыдущих спрайтов
-        Object.values(playersSprites).forEach(sprite => sprite.destroy());
-        Object.keys(playersSprites).forEach(key => delete playersSprites[key]);
-        myTank = null;
-
-        for (const id in initialPlayers) {
-            const data = initialPlayers[id];
-            const tankSprite = createTank(data);
-            app.stage.addChild(tankSprite);
-            playersSprites[id] = tankSprite;
-            
-            if (id === socketInstance.id) {
-                myTank = tankSprite;
-            }
-        }
-    });
-
-    // 2. Обновление состояния (GameState)
-    socketInstance.on('gameState', (updatedPlayers) => {
-        for (const id in updatedPlayers) {
-            const data = updatedPlayers[id];
-            
-            if (playersSprites[id]) {
-                // Обновляем существующий спрайт
-                playersSprites[id].x = data.x;
-                playersSprites[id].y = data.y;
-                playersSprites[id].rotation = data.rotation;
-            } else {
-                // Добавляем новый спрайт, если он появился (редко в 2-х игровом режиме)
-                const tankSprite = createTank(data);
-                app.stage.addChild(tankSprite);
-                playersSprites[id] = tankSprite;
-            }
-        }
-    });
-
-    // 3. Обработка смерти/отключения
-    socketInstance.on('deathPlayer', (data) => {
-        if (playersSprites[data.id]) {
-            playersSprites[data.id].destroy();
-            delete playersSprites[data.id];
-            if (data.id === socketInstance.id) {
-                myTank = null;
-            }
-        }
-    });
-    
-    // Добавьте обработчики 'shoot' здесь, если пули обрабатываются на клиенте
-    // socketInstance.on('shoot', (data) => { ... });
-};
 
 onUnmounted(() => {
     // Clean up event listeners
@@ -476,9 +406,6 @@ onUnmounted(() => {
     bullets = [];
 
     if (app) {
-        props.socket.off('init');
-        props.socket.off('gameState');
-        props.socket.off('deathPlayer');
         app.destroy(true, { children: true, texture: true, baseTexture: true });
     }
 });
