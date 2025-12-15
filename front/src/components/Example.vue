@@ -3,25 +3,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Application, Sprite, Texture, RenderTexture, Graphics } from 'pixi.js';
 import { tankGraphics } from "@/utilites/tank.js"
 import { wallGraphics } from "@/utilites/wall.js"
 import { MAP_GRID } from "@/utilites/map.js"
 
-import { io } from "socket.io-client";
-const socket = io("http://localhost:3000");
-
 const props = defineProps({
-    socket: {
-        type: Object,
-        required: true
-    },
-    matchId: {
-        type: String,
-        required: true
-    }
-
+    socket: Object,
+    matchId: String
 });
 
 const gameContainer = ref(null);
@@ -34,6 +24,8 @@ let bullets = [];
 let lastShotTime = 0;
 const shotDelay = 400;
 let handleKeyDown, handleKeyUp;
+let pendingInitData = null; // Хранит данные init если они пришли до создания player
+let isInitialized = false; // Флаг готовности PIXI приложения
 
 const TILE_SIZE = 25;
 
@@ -82,110 +74,125 @@ const checkOtherPlayersCollision = (x, y, collisionRadius = 50) => {
     return false;
 }
 
-socket.on("init", (players) => {
-    console.log("Init players:", players);
+// Функция настройки обработчиков сокетов
+const setupSocketListeners = () => {
+    // Инициализация позиции игрока
+    console.log("props.socket", props.socket);
+    props.socket.on("init", (players) => {
+        console.log("Init players:", players);
         
-    if(player) {
-        const playerData = players[socket.id];
-
-        player.x = playerData.x;
-        player.y = playerData.y;
-    } else {
-
-    }
+        const playerData = players[props.socket.id];
+        if (!playerData) return;
         
-})
-
-socket.on("deathPlayer", (data) => {
-    const victimId = data.id;
-    if (victimId === socket.id) {
-        // I died
-        alert("You died! Game Over.");
-        // Optional: reload or cleanup
-        if (player) {
-            app.stage.removeChild(player);
-            player.destroy();
-            player = null;
+        if(player) {
+            // Player уже создан - применяем сразу
+            player.x = playerData.x;
+            player.y = playerData.y;
+        } else {
+            // Player ещё не создан - сохраняем для применения позже
+            pendingInitData = playerData;
         }
-        location.reload(); 
-    } else {
-        // Someone else died
-        if (otherPlayers[victimId]) {
-            app.stage.removeChild(otherPlayers[victimId]);
-            otherPlayers[victimId].destroy();
-            delete otherPlayers[victimId];
-        }
-    }
-});
+    });
 
-socket.on("shoot", (data) => {
-    const bulletData = data.bullet;
-    const bullet = new Graphics();
-    // bullet.rect(-2, -2, 4, 4);
-    bullet.circle(0, 0, 2);
-    bullet.fill(0xff0000);
-
-    bullet.x = bulletData.x;
-    bullet.y = bulletData.y;
-    bullet.rotation = bulletData.rotation;
-    bullet.speed = bulletData.speed;
-
-    bullet.ownerId = data.playerId;
-
-    app.stage.addChild(bullet);
-    bullets.push(bullet);
-});
-
-socket.on("gameState", (players) => {
-    // 1. Update or Create players
-    for(const playerId in players) {
-        if(playerId === socket.id) continue;
-
-        const playerData = players[playerId];
-
-        if (!otherPlayers[playerId]) {
-            // New player joined
-            const tankTexture = tankGraphics(app.renderer, playerData.color);
-            const newSprite = new Sprite(tankTexture);
-            
-            newSprite.anchor.set(0.5);
-            newSprite.scale.set(2);
-            
-            // Инициализация целевых значений
-            newSprite.targetX = playerData.x;
-            newSprite.targetY = playerData.y;
-            newSprite.targetRotation = playerData.rotation;
-            newSprite.x = playerData.x;
-            newSprite.y = playerData.y;
-            newSprite.rotation = playerData.rotation;
-            
-            app.stage.addChild(newSprite);
-            otherPlayers[playerId] = newSprite;
-        }
-
-        // Обновление целевых координат (не прямых)
-        const otherSprite = otherPlayers[playerId];
-        otherSprite.targetX = playerData.x;
-        otherSprite.targetY = playerData.y;
-        otherSprite.targetRotation = playerData.rotation;
-    }
-
-    // 2. Remove disconnected players
-    for (const existingPlayerId in otherPlayers) {
-        if (!players[existingPlayerId]) {
-            // Player left
-            if (otherPlayers[existingPlayerId]) {
-                app.stage.removeChild(otherPlayers[existingPlayerId]);
-                otherPlayers[existingPlayerId].destroy();
-                delete otherPlayers[existingPlayerId];
+    // Обработка смерти игрока
+    props.socket.on("deathPlayer", (data) => {
+        if (!isInitialized || !app) return;
+        
+        const victimId = data.id;
+        if (victimId === props.socket.id) {
+            // Я умер
+            alert("Вы уничтожены! Игра окончена.");
+            if (player) {
+                app.stage.removeChild(player);
+                player.destroy();
+                player = null;
+            }
+        } else {
+            // Кто-то другой умер
+            if (otherPlayers[victimId]) {
+                app.stage.removeChild(otherPlayers[victimId]);
+                otherPlayers[victimId].destroy();
+                delete otherPlayers[victimId];
             }
         }
-    }
-});
+    });
+
+    // Обработка выстрелов других игроков
+    props.socket.on("shoot", (data) => {
+        if (!isInitialized || !app) return;
+        
+        const bulletData = data.bullet;
+        const bullet = new Graphics();
+        bullet.circle(0, 0, 2);
+        bullet.fill(0xff0000);
+
+        bullet.x = bulletData.x;
+        bullet.y = bulletData.y;
+        bullet.rotation = bulletData.rotation;
+        bullet.speed = bulletData.speed;
+        bullet.ownerId = data.playerId;
+
+        app.stage.addChild(bullet);
+        bullets.push(bullet);
+    });
+
+    // Обновление состояния игры
+    props.socket.on("gameState", (players) => {
+        if (!isInitialized || !app || !app.renderer) return;
+        for(const playerId in players) {
+            if(playerId === props.socket.id) continue;
+
+            const playerData = players[playerId];
+
+            if (!otherPlayers[playerId]) {
+                // Новый игрок присоединился
+                const tankTexture = tankGraphics(app.renderer, playerData.color);
+                const newSprite = new Sprite(tankTexture);
+                
+                newSprite.anchor.set(0.5);
+                newSprite.scale.set(2);
+                
+                // Инициализация целевых значений
+                newSprite.targetX = playerData.x;
+                newSprite.targetY = playerData.y;
+                newSprite.targetRotation = playerData.rotation;
+                newSprite.x = playerData.x;
+                newSprite.y = playerData.y;
+                newSprite.rotation = playerData.rotation;
+                
+                app.stage.addChild(newSprite);
+                otherPlayers[playerId] = newSprite;
+            }
+
+            // Обновление целевых координат
+            const otherSprite = otherPlayers[playerId];
+            otherSprite.targetX = playerData.x;
+            otherSprite.targetY = playerData.y;
+            otherSprite.targetRotation = playerData.rotation;
+        }
+
+        // 2. Удаление отключившихся игроков
+        for (const existingPlayerId in otherPlayers) {
+            if (!players[existingPlayerId]) {
+                if (otherPlayers[existingPlayerId]) {
+                    app.stage.removeChild(otherPlayers[existingPlayerId]);
+                    otherPlayers[existingPlayerId].destroy();
+                    delete otherPlayers[existingPlayerId];
+                }
+            }
+        }
+    });
+};
 
 onMounted(async () => {
+    // Ждём nextTick чтобы DOM был готов
+    await nextTick();
 
     if (!props.matchId || !gameContainer.value) return;
+
+    // Настройка обработчиков сокетов СРАЗУ, до асинхронных операций
+    // Это критично, т.к. сервер может отправить init до завершения app.init()
+    setupSocketListeners();
 
     console.log("props", props);
 
@@ -193,9 +200,15 @@ onMounted(async () => {
     await app.init({
         background: '#5f3a22',
         width: 600,
-        
         height: 600
     });
+
+    // Проверяем gameContainer после асинхронной операции (компонент мог размонтироваться)
+    if (!gameContainer.value) {
+        if (app) app.destroy();
+        app = null;
+        return;
+    }
 
     gameContainer.value.appendChild(app.canvas);
     gameContainer.value.focus();
@@ -231,6 +244,16 @@ onMounted(async () => {
     player.scale.set(2);
     app.stage.addChild(player);
 
+    // Применяем сохранённые данные init если они пришли до создания player
+    if (pendingInitData) {
+        player.x = pendingInitData.x;
+        player.y = pendingInitData.y;
+        pendingInitData = null;
+    }
+
+    // Помечаем что PIXI готов к работе
+    isInitialized = true;
+
     handleKeyDown = (e) => {
         keys[e.code] = true;
 
@@ -248,6 +271,9 @@ onMounted(async () => {
     window.addEventListener('keyup', handleKeyUp);
 
     app.ticker.add(() => {
+        // Защита от работы когда компонент размонтирован или player уничтожен
+        if (!isInitialized || !player) return;
+        
         let moved = false;
         let rotationAngle = 0;
         
@@ -289,7 +315,7 @@ onMounted(async () => {
             player.rotation = rotationAngle;
             console.log("wallTexture", wallTexture);
             
-            socket.emit("playerMovement", {
+            props.socket.emit("playerMovement", {
                 x: player.x,
                 y: player.y,
                 rotation: player.rotation
@@ -328,7 +354,7 @@ const createBullet = () => {
     bullet.rotation = angle - Math.PI * 1.5;   
 
     bullet.speed = 6;
-    bullet.ownerId = socket.id;
+    bullet.ownerId = props.socket.id;
 
     app.stage.addChild(bullet);
 
@@ -341,8 +367,8 @@ const shoot = () => {
 
     const bullet = createBullet();
 
-    socket.emit("shoot", {
-        playerId: socket.id,
+    props.socket.emit("shoot", {
+        playerId: props.socket.id,
         bullet: {
             id: bullet.ownerId,
             x: bullet.x,
@@ -376,7 +402,7 @@ const updateBullets = () => {
             continue; // Bullet hit wall, skip player collision check
         }
 
-        if (bullet.ownerId !== socket.id) continue; 
+        if (bullet.ownerId !== props.socket.id) continue; 
 
         for (const playerId in otherPlayers) {
             const enemy = otherPlayers[playerId];
@@ -390,7 +416,7 @@ const updateBullets = () => {
             
             // 20 is approx radius of tank (since scale is 2 and maybe texture is small, actually tank texture size unknown but assuming ~40px width total)
             if (dist < 30) {
-                    socket.emit("playerHit", { id: playerId });
+                    props.socket.emit("playerHit", { id: playerId });
                     bullet.destroy();
                     bullets.splice(i, 1);
                     break; // Bullet hit something, stop checking other enemies
@@ -400,71 +426,33 @@ const updateBullets = () => {
 }
 
 
-watch(() => props.socket, (newSocket, oldSocket) => {
-    if (newSocket && newSocket !== oldSocket) {
-        setupSocketListeners(newSocket);
-    }
-}, { immediate: true });
-
-
-const setupSocketListeners = (socketInstance) => {
-    // 1. Обработка начального состояния (Init)
-    socketInstance.on('init', (initialPlayers) => {
-        console.log("Game Init received:", initialPlayers);
-        
-        // Очистка предыдущих спрайтов
-        Object.values(playersSprites).forEach(sprite => sprite.destroy());
-        Object.keys(playersSprites).forEach(key => delete playersSprites[key]);
-        myTank = null;
-
-        for (const id in initialPlayers) {
-            const data = initialPlayers[id];
-            const tankSprite = createTank(data);
-            app.stage.addChild(tankSprite);
-            playersSprites[id] = tankSprite;
-            
-            if (id === socketInstance.id) {
-                myTank = tankSprite;
-            }
-        }
-    });
-
-    // 2. Обновление состояния (GameState)
-    socketInstance.on('gameState', (updatedPlayers) => {
-        for (const id in updatedPlayers) {
-            const data = updatedPlayers[id];
-            
-            if (playersSprites[id]) {
-                // Обновляем существующий спрайт
-                playersSprites[id].x = data.x;
-                playersSprites[id].y = data.y;
-                playersSprites[id].rotation = data.rotation;
-            } else {
-                // Добавляем новый спрайт, если он появился (редко в 2-х игровом режиме)
-                const tankSprite = createTank(data);
-                app.stage.addChild(tankSprite);
-                playersSprites[id] = tankSprite;
-            }
-        }
-    });
-
-    // 3. Обработка смерти/отключения
-    socketInstance.on('deathPlayer', (data) => {
-        if (playersSprites[data.id]) {
-            playersSprites[data.id].destroy();
-            delete playersSprites[data.id];
-            if (data.id === socketInstance.id) {
-                myTank = null;
-            }
-        }
-    });
-    
-    // Добавьте обработчики 'shoot' здесь, если пули обрабатываются на клиенте
-    // socketInstance.on('shoot', (data) => { ... });
-};
-
 onUnmounted(() => {
-    // Clean up event listeners
+    // СНАЧАЛА помечаем что приложение больше не работает
+    // Это предотвратит ошибки в socket handlers и ticker
+    isInitialized = false;
+
+    // Останавливаем рендеринг ПОЛНОСТЬЮ перед очисткой
+    if (app) {
+        // Делаем stage невидимым чтобы предотвратить ошибки рендера
+        if (app.stage) {
+            app.stage.renderable = false;
+        }
+        // Полностью останавливаем и уничтожаем ticker
+        if (app.ticker) {
+            app.ticker.stop();
+            app.ticker.destroy();
+        }
+    }
+
+    // Очистка обработчиков сокетов
+    if (props.socket) {
+        props.socket.off('init');
+        props.socket.off('gameState');
+        props.socket.off('deathPlayer');
+        props.socket.off('shoot');
+    }
+
+    // Очистка обработчиков клавиатуры
     if (handleKeyDown) {
         window.removeEventListener('keydown', handleKeyDown);
     }
@@ -472,14 +460,50 @@ onUnmounted(() => {
         window.removeEventListener('keyup', handleKeyUp);
     }
 
-    bullets.forEach(bullet => bullet.destroy());
-    bullets = [];
+    // Очистка пуль
+    if (bullets && bullets.length > 0) {
+        bullets.forEach(bullet => {
+            if (bullet && bullet.destroy) {
+                try {
+                    bullet.destroy();
+                } catch (e) {
+                    // игнорируем ошибки при очистке
+                }
+            }
+        });
+        bullets = [];
+    }
 
+    // Очистка других игроков
+    for (const playerId in otherPlayers) {
+        if (otherPlayers[playerId] && otherPlayers[playerId].destroy) {
+            try {
+                otherPlayers[playerId].destroy();
+            } catch (e) {
+                // игнорируем ошибки при очистке
+            }
+        }
+    }
+    otherPlayers = {};
+
+    // Очистка игрока
+    if (player && player.destroy) {
+        try {
+            player.destroy();
+        } catch (e) {
+            // игнорируем ошибки при очистке
+        }
+        player = null;
+    }
+
+    // Очистка PIXI приложения
     if (app) {
-        props.socket.off('init');
-        props.socket.off('gameState');
-        props.socket.off('deathPlayer');
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        try {
+            app.destroy(true);
+        } catch (e) {
+            // игнорируем ошибки при очистке
+        }
+        app = null;
     }
 });
 

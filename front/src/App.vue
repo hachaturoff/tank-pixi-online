@@ -201,18 +201,19 @@ onUnmounted(() => {
         <p v-if="isSearching" class="loading-animation">...</p>
       </div>
 
-      <div v-else-if="gameState === 'inGame'" class="game-area">
-        <h2>Матч {{ currentMatchId }}</h2>
+      <div v-else-if="gameState === 'loadingGame' || gameState === 'inGame'" class="game-area">
+        <h2>{{ gameState === 'loadingGame' ? matchStatus : `Матч ${currentMatchId}` }}</h2>
+        <p v-if="gameState === 'loadingGame'">Пожалуйста, подождите, пока присоединится второй игрок...</p>
+        <p v-if="gameState === 'loadingGame'">ID комнаты: {{ currentMatchId }}</p>
+        
+        <!-- Example монтируется один раз и сохраняется между loadingGame и inGame -->
         <Example :match-id="currentMatchId" :socket="socket" />
-        <p>*** ИГРА В ПРОЦЕССЕ: PIXI.JS CANVAS ***</p>
-        <pre>{{ gameInfo }}</pre>
-        <button @click="leaveMatch">Покинуть матч</button>
-      </div>
-
-      <div v-else-if="gameState === 'loadingGame'">
-        <h2>{{ matchStatus }}</h2>
-        <p>Пожалуйста, подождите, пока присоединится второй игрок...</p>
-        <p>ID комнаты: {{ currentMatchId }}</p>
+        
+        <template v-if="gameState === 'inGame'">
+          <p>*** ИГРА В ПРОЦЕССЕ: PIXI.JS CANVAS ***</p>
+          <pre>{{ gameInfo }}</pre>
+          <button @click="leaveMatch">Покинуть матч</button>
+        </template>
       </div>
     </main>
   </div>

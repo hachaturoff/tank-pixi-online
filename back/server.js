@@ -139,9 +139,11 @@ io.on("connection", (socket) => {
     };
 
     io.to(roomId).emit("init", room.players);
-
+    console.log("Init players:", room.players);
+    
     if (Object.keys(room.players).length === MAX_PLAYERS_PER_MATCH) {
       room.status = "playing";
+      console.log("Матч начался!");
       io.to(roomId).emit("matchStart", "Матч начался!");
     }
   });
