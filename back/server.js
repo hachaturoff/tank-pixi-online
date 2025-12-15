@@ -87,7 +87,7 @@ setInterval(() => {
       io.to(roomId).emit("gameState", room.players);
     }
   }
-  io.emit("gameState", players);
+  // Убрали: io.emit("gameState", players) - players пустой и удалял спрайты
 }, GAME_TICK_RATE);
 
 io.on("connection", (socket) => {
@@ -140,7 +140,7 @@ io.on("connection", (socket) => {
 
     io.to(roomId).emit("init", room.players);
     console.log("Init players:", room.players);
-    
+
     if (Object.keys(room.players).length === MAX_PLAYERS_PER_MATCH) {
       room.status = "playing";
       console.log("Матч начался!");

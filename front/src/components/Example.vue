@@ -76,21 +76,39 @@ const checkOtherPlayersCollision = (x, y, collisionRadius = 50) => {
 
 // Функция настройки обработчиков сокетов
 const setupSocketListeners = () => {
-    // Инициализация позиции игрока
-    console.log("props.socket", props.socket);
+    // Инициализация позиции игрока и других игроков
     props.socket.on("init", (players) => {
-        console.log("Init players:", players);
-        
-        const playerData = players[props.socket.id];
-        if (!playerData) return;
-        
-        if(player) {
-            // Player уже создан - применяем сразу
-            player.x = playerData.x;
-            player.y = playerData.y;
-        } else {
-            // Player ещё не создан - сохраняем для применения позже
-            pendingInitData = playerData;
+        // Обрабатываем всех игроков
+        for (const playerId in players) {
+            const playerData = players[playerId];
+            
+            if (playerId === props.socket.id) {
+                // Это мы — устанавливаем позицию
+                if (player) {
+                    player.x = playerData.x;
+                    player.y = playerData.y;
+                } else {
+                    pendingInitData = playerData;
+                }
+            } else {
+                // Это другой игрок — создаём его спрайт если PIXI готов
+                if (isInitialized && app && app.renderer && !otherPlayers[playerId]) {
+                    const tankTexture = tankGraphics(app.renderer, playerData.color);
+                    const newSprite = new Sprite(tankTexture);
+                    
+                    newSprite.anchor.set(0.5);
+                    newSprite.scale.set(2);
+                    newSprite.targetX = playerData.x;
+                    newSprite.targetY = playerData.y;
+                    newSprite.targetRotation = playerData.rotation;
+                    newSprite.x = playerData.x;
+                    newSprite.y = playerData.y;
+                    newSprite.rotation = playerData.rotation;
+                    
+                    app.stage.addChild(newSprite);
+                    otherPlayers[playerId] = newSprite;
+                }
+            }
         }
     });
 
@@ -138,7 +156,11 @@ const setupSocketListeners = () => {
 
     // Обновление состояния игры
     props.socket.on("gameState", (players) => {
+        // Отладка: смотрим что приходит
+        
         if (!isInitialized || !app || !app.renderer) return;
+        
+        // 1. Обновление или создание игроков
         for(const playerId in players) {
             if(playerId === props.socket.id) continue;
 
@@ -313,7 +335,6 @@ onMounted(async () => {
 
         if (moved) {
             player.rotation = rotationAngle;
-            console.log("wallTexture", wallTexture);
             
             props.socket.emit("playerMovement", {
                 x: player.x,
