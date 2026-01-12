@@ -1,13 +1,20 @@
 <template>
-    <div ref="gameContainer" class="game-container" tabindex="0"></div>
+    <div>
+        <div ref="gameContainer" class="game-container" tabindex="0"></div>
+        <footer class="game-controls">
+            <button id="skill-1">Удар</button>
+        </footer>
+    </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { Application, Sprite, Texture, RenderTexture, Graphics } from 'pixi.js';
+import { Application, Sprite, Texture, RenderTexture, Graphics, Container } from 'pixi.js';
 import { tankGraphics } from "@/utilites/tank.js"
-import { wallGraphics } from "@/utilites/wall.js"
+import { createWallTexture } from "@/utilites/wall.js"
 import { MAP_GRID } from "@/utilites/map.js"
+import { initBases } from "@/utilites/base.js"
+import { checkPlayerCollision, isWall, checkOtherPlayersCollision, lerp, isBase} from "@/utilites/helpers.js"
 
 const props = defineProps({
     socket: Object,
@@ -28,51 +35,6 @@ let pendingInitData = null; // Хранит данные init если они п
 let isInitialized = false; // Флаг готовности PIXI приложения
 
 const TILE_SIZE = 25;
-
-// Линейная интерполяция для плавного движения
-const lerp = (start, end, amt) => {
-  return (1 - amt) * start + amt * end;
-}
-
-// Проверка, является ли клетка стеной
-const isWall = (x, y) => {
-    const col = Math.floor(x / TILE_SIZE);
-    const row = Math.floor(y / TILE_SIZE);
-    
-    // Проверка границ массива
-    if (row < 0 || row >= MAP_GRID.length || col < 0 || col >= MAP_GRID[0].length) {
-        return true; // За границами = стена
-    }
-    
-    return MAP_GRID[row][col] === 1;
-}
-
-// Проверка коллизии игрока со стенами (учитывая размер танка)
-const checkPlayerCollision = (x, y, halfSize = 24) => {
-    // Проверяем все 4 угла танка
-    return isWall(x - halfSize, y - halfSize) ||
-           isWall(x + halfSize, y - halfSize) ||
-           isWall(x - halfSize, y + halfSize) ||
-           isWall(x + halfSize, y + halfSize);
-}
-
-// Проверка коллизии с другими игроками
-const checkOtherPlayersCollision = (x, y, collisionRadius = 50) => {
-    for (const playerId in otherPlayers) {
-        const other = otherPlayers[playerId];
-        if (!other) continue;
-        
-        const dx = x - other.x;
-        const dy = y - other.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Если расстояние между центрами меньше суммы радиусов — есть коллизия
-        if (distance < collisionRadius) {
-            return true;
-        }
-    }
-    return false;
-}
 
 // Функция настройки обработчиков сокетов
 const setupSocketListeners = () => {
@@ -120,6 +82,28 @@ const setupSocketListeners = () => {
         if (victimId === props.socket.id) {
             // Я умер
             alert("Вы уничтожены! Игра окончена.");
+            if (player) {
+                app.stage.removeChild(player);
+                player.destroy();
+                player = null;
+            }
+        } else {
+            // Кто-то другой умер
+            if (otherPlayers[victimId]) {
+                app.stage.removeChild(otherPlayers[victimId]);
+                otherPlayers[victimId].destroy();
+                delete otherPlayers[victimId];
+            }
+        }
+    });
+    
+    props.socket.on("baseDestroyed", (data) => {
+        if (!isInitialized || !app) return;
+        
+        const victimId = data.id;
+        if (victimId === props.socket.id) {
+            // Я умер
+            alert("Ваша база уничтожена.");
             if (player) {
                 app.stage.removeChild(player);
                 player.destroy();
@@ -216,14 +200,43 @@ onMounted(async () => {
     // Это критично, т.к. сервер может отправить init до завершения app.init()
     setupSocketListeners();
 
-    console.log("props", props);
+    const GAME_WIDTH = 425;
+    const GAME_HEIGHT = 600;
 
     app = new Application();
     await app.init({
-        background: '#5f3a22',
-        width: 600,
-        height: 600
+        view: document.getElementById("game-canvas"),
+        // resizeTo: window,
+        // background: '#5f3a22',
+        autoDensity: true, // Важно для четкости на Retina-дисплеях
+        resolution: window.devicePixelRatio || 1,
+        width: GAME_WIDTH,
+        height: GAME_HEIGHT
     });
+
+    const scene = new Container();
+    app.stage.addChild(scene);
+
+    // function resize() {
+    //     const designWidth = 400;
+    //     const designHeight = 600;
+
+    //     // Вычисляем масштаб по обеим осям
+    //     const scale = Math.min(
+    //         app.screen.width / designWidth, 
+    //         app.screen.height / designHeight
+    //     );
+
+    //     // Применяем масштаб к нашему контейнеру
+    //     scene.scale.set(scale);
+
+    //     // Центрируем контейнер на экране
+    //     scene.x = (app.screen.width - designWidth * scale) / 2;
+    //     scene.y = (app.screen.height - designHeight * scale) / 2;
+    // }
+    // window.addEventListener('resize', resize);
+    // Вызываем один раз при старте
+    // resize();
 
     // Проверяем gameContainer после асинхронной операции (компонент мог размонтироваться)
     if (!gameContainer.value) {
@@ -235,12 +248,17 @@ onMounted(async () => {
     gameContainer.value.appendChild(app.canvas);
     gameContainer.value.focus();
 
+    const { baseP1, baseP2 } = initBases(app);
+
+    app.stage.addChild(baseP1);
+    app.stage.addChild(baseP2);
+
     const field = new Graphics();
     field.rect(0, 0, 600, 600);
     field.stroke({ width: 4, color: 0xffffff });
     app.stage.addChild(field);
 
-    const wallTexture = wallGraphics(app.renderer);
+    const wallTexture = createWallTexture(app);
 
     for (let row = 0; row < MAP_GRID.length; row++) {
         for (let col = 0; col < MAP_GRID[row].length; col++) {
@@ -322,7 +340,7 @@ onMounted(async () => {
         }
 
         // Проверка коллизии со стенами и другими игроками
-        if (checkPlayerCollision(player.x, player.y) || checkOtherPlayersCollision(player.x, player.y)) {
+        if (checkPlayerCollision(player.x, player.y) || checkOtherPlayersCollision(player.x, player.y, otherPlayers)) {
             // Откатываем позицию если врезались в стену или другого игрока
             player.x = prevX;
             player.y = prevY;
@@ -416,12 +434,32 @@ const updateBullets = () => {
             continue; // Bullet removed, skip collision check
         }
 
+        if(isBase(bullet.x, bullet.y)) {
+            // console.log("Base hit detected for bullet", bullet);
+
+            if(bullet.x >= 195 && bullet.x <= 315 && bullet.y >= 25 && bullet.y <= 65) { 
+                // База 1
+                props.socket.emit("baseHit", { id: bullet.ownerId });
+
+            } else if(bullet.x >= 195 && bullet.x <= 315 && bullet.y >= 535 && bullet.y <= 575) {
+                // База 2
+                props.socket.emit("baseHit", { id: bullet.ownerId });
+            }
+            
+            // Пуля попала в базу
+            bullet.destroy();
+            bullets.splice(i, 1);
+            continue; // Bullet hit base, skip further checks
+        }
+
         // Проверка коллизии пули со стеной
         if (isWall(bullet.x, bullet.y)) {
             bullet.destroy();
             bullets.splice(i, 1);
             continue; // Bullet hit wall, skip player collision check
         }
+
+        
 
         if (bullet.ownerId !== props.socket.id) continue; 
 
@@ -539,6 +577,14 @@ onUnmounted(() => {
     border: 2px solid #444;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
     outline: none;
-    /* Remove focus outline */
+}
+
+@media screen and (max-width: 650px) {
+    .game-container {
+        width: 100%;
+        height: auto;
+        margin: 0 0;
+    }
+    
 }
 </style>

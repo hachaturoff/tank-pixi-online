@@ -179,7 +179,7 @@ onUnmounted(() => {
 
 <template>
   <div class="container">
-    <header>
+    <header v-if="gameState === 'inGame'">
       <h1>Tanks Online</h1>
     </header>
     <main>
@@ -211,7 +211,7 @@ onUnmounted(() => {
         
         <template v-if="gameState === 'inGame'">
           <p>*** ИГРА В ПРОЦЕССЕ: PIXI.JS CANVAS ***</p>
-          <pre>{{ gameInfo }}</pre>
+          <!-- <pre>{{ gameInfo }}</pre> -->
           <button @click="leaveMatch">Покинуть матч</button>
         </template>
       </div>
@@ -262,4 +262,10 @@ onUnmounted(() => {
     justify-content: center;
     align-items: center;
 } */
+
+@media screen and (max-width: 650px) {
+  .container {
+      padding: 0;
+  }    
+}
 </style>

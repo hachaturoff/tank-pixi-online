@@ -133,9 +133,10 @@ io.on("connection", (socket) => {
 
     room.players[socket.id] = {
       id: socket.id,
-      x: Math.floor(Math.random() * 7) * 50,
-      y: Math.floor(Math.random() * 7) * 50,
+      x: Math.floor(Math.random() * (7 - 2) + 2) * 50,
+      y: Math.floor(Math.random() * (7 - 2) + 2) * 50,
       rotation: 0,
+      baseHealth: 3
     };
 
     io.to(roomId).emit("init", room.players);
@@ -175,6 +176,39 @@ io.on("connection", (socket) => {
     });
   });
 
+  socket.on("baseHit", (data) => {
+    if (
+      !currentRoomId ||
+      !matches[currentRoomId] ||
+      matches[currentRoomId].status !== "playing"
+    ) return;
+
+    // console.log('Base hit received from player:', matches[currentRoomId].players[data.playerId]);
+    
+
+    if(matches[currentRoomId].players[data.id].baseHealth > 1) {
+      matches[currentRoomId].players[data.id].baseHealth -= 1;
+      return;
+    }  
+
+    const victimId = data.id;
+    const room = matches[currentRoomId];
+    if (room.players[victimId]) {
+      delete room.players[victimId];
+      io.to(currentRoomId).emit("baseDestroyed", { id: victimId }); // Проверка на конец матча (остался один игрок)
+
+      if (Object.keys(room.players).length === 1) {
+        const winnerId = Object.keys(room.players)[0];
+        room.status = "finished";
+        io.to(currentRoomId).emit("matchEnd", { winnerId: winnerId });
+      } else if (Object.keys(room.players).length === 0) {
+        // Если оба покинули или был баг, удаляем комнату
+        delete matches[currentRoomId];
+      }
+    }
+      
+  });
+
   socket.on("playerHit", (data) => {
     if (
       !currentRoomId ||
@@ -186,17 +220,17 @@ io.on("connection", (socket) => {
     const victimId = data.id;
     const room = matches[currentRoomId];
     if (room.players[victimId]) {
-      delete room.players[victimId];
+      
       io.to(currentRoomId).emit("deathPlayer", { id: victimId }); // Проверка на конец матча (остался один игрок)
 
-      if (Object.keys(room.players).length === 1) {
-        const winnerId = Object.keys(room.players)[0];
-        room.status = "finished";
-        io.to(currentRoomId).emit("matchEnd", { winnerId: winnerId });
-      } else if (Object.keys(room.players).length === 0) {
-        // Если оба покинули или был баг, удаляем комнату
-        delete matches[currentRoomId];
-      }
+      // if (Object.keys(room.players).length === 1) {
+      //   const winnerId = Object.keys(room.players)[0];
+      //   room.status = "finished";
+      //   io.to(currentRoomId).emit("matchEnd", { winnerId: winnerId });
+      // } else if (Object.keys(room.players).length === 0) {
+      //   // Если оба покинули или был баг, удаляем комнату
+      //   delete matches[currentRoomId];
+      // }
     }
   });
 

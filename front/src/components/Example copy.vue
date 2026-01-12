@@ -188,8 +188,7 @@ onMounted(async () => {
     app = new Application();
     await app.init({
         background: '#5f3a22',
-        width: 600,
-        
+        width: 400,
         height: 600
     });
 

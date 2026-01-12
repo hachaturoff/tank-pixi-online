@@ -33,3 +33,29 @@ a,
     padding: 0 2rem;
   }
 }
+
+@media (max-width: 650px) {
+  body {
+    display: flex;
+    place-items: center;
+  }
+
+  #app {
+    /* display: grid;
+    grid-template-columns: 1fr 1fr; */
+    padding: 0;
+    margin: 0;
+  }
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Убирает скролл на мобильных */
+    background-color: #000; /* Цвет "полос" по краям */
+}
+
+canvas {
+    display: block;
+    touch-action: none; /* Важно для мобильных игр, предотвращает жесты браузера */
+}
